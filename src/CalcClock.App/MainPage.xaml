@@ -21,6 +21,16 @@
             <Setter Property="VerticalAlignment" Value="Stretch" />
             <Setter Property="CornerRadius" Value="6" />
         </Style>
+
+        <!-- Same size/shape as CalcButtonStyle, so "=" lines up with the rest of the keypad;
+             only its accent coloring (from AccentButtonStyle) is meant to stand out. -->
+        <Style x:Key="AccentCalcButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="Margin" Value="3" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
     </Page.Resources>
 
     <Grid Padding="16" RowSpacing="8">
@@ -133,7 +143,7 @@
 
             <Button Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Style="{StaticResource CalcButtonStyle}" Tag="0" Content="0" Click="DigitButton_Click" />
             <Button Grid.Row="4" Grid.Column="2" Style="{StaticResource CalcButtonStyle}" Content="." Click="DecimalButton_Click" />
-            <Button Grid.Row="4" Grid.Column="3" Style="{StaticResource AccentButtonStyle}" Content="=" Click="EqualsButton_Click" />
+            <Button Grid.Row="4" Grid.Column="3" Style="{StaticResource AccentCalcButtonStyle}" Content="=" Click="EqualsButton_Click" />
         </Grid>
     </Grid>
 </Page>
