@@ -125,4 +125,62 @@ public class CalculatorViewModelTests
         Assert.Equal(string.Empty, vm.ExpressionText);
         Assert.Equal("0", vm.DisplaySegments[0].Text);
     }
+
+    [Fact]
+    public void ExpressionText_ChainedOperators_ShowsFullTrailNotJustLastStep()
+    {
+        var vm = new CalculatorViewModel();
+        Type(vm, "0100"); // 1 minute
+        vm.PressOperator('+');
+        Type(vm, "0100"); // + 1 minute
+        vm.PressOperator('+');
+        Type(vm, "0100"); // + 1 minute
+        vm.PressEquals();
+
+        Assert.Equal("0h 01m 00s + 0h 01m 00s + 0h 01m 00s = 0h 03m 00s", vm.ExpressionText);
+    }
+
+    [Fact]
+    public void PressEquals_AddsCompletedCalculationToHistory()
+    {
+        var vm = new CalculatorViewModel();
+        Type(vm, "0030");
+        vm.PressOperator('+');
+        Type(vm, "0045");
+        vm.PressEquals();
+
+        Assert.Single(vm.History);
+        Assert.Equal(vm.ExpressionText, vm.History[0].Expression);
+    }
+
+    [Fact]
+    public void RecallHistory_LoadsPastResultAsCurrentValue()
+    {
+        var vm = new CalculatorViewModel();
+        Type(vm, "0030");
+        vm.PressOperator('+');
+        Type(vm, "0045");
+        vm.PressEquals();
+        var entry = vm.History[0];
+
+        vm.PressClear();
+        vm.RecallHistory(entry);
+
+        Assert.Equal("15", vm.DisplaySegments[2].Text); // 75s -> 1m15s, Second segment
+        Assert.Equal("01", vm.DisplaySegments[1].Text);
+    }
+
+    [Fact]
+    public void PressSelectUnit_TypedDigitsEditOnlyThatSegment()
+    {
+        var vm = new CalculatorViewModel();
+        Type(vm, "0100"); // 1 minute -> Hour=0, Minute=01, Second=00
+
+        vm.PressSelectUnit(ClockUnit.Hour);
+        vm.PressDigit(5);
+
+        Assert.Equal("5", vm.DisplaySegments[0].Text);  // Hour, independently edited
+        Assert.Equal("01", vm.DisplaySegments[1].Text); // Minute, untouched
+        Assert.Equal("00", vm.DisplaySegments[2].Text); // Second, untouched
+    }
 }

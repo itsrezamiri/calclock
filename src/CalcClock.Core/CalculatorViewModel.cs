@@ -11,7 +11,10 @@ namespace CalcClock.Core;
 /// </summary>
 public sealed class CalculatorViewModel : INotifyPropertyChanged
 {
+    private const int MaxHistoryEntries = 100;
+
     private readonly ClockEntryBuffer _buffer = new();
+    private readonly List<string> _expressionTokens = new();
 
     private string _scalarDigits = string.Empty;
     private ClockValue? _pendingOperand;
@@ -28,7 +31,11 @@ public sealed class CalculatorViewModel : INotifyPropertyChanged
     public CalculatorViewModel(UnitSettings? settings = null)
     {
         Settings = settings ?? new UnitSettings();
-        Settings.PropertyChanged += (_, _) => RefreshDisplay();
+        Settings.PropertyChanged += (_, _) =>
+        {
+            _buffer.EnsureSelectionValid(Settings);
+            RefreshDisplay();
+        };
         RefreshDisplay();
     }
 
@@ -36,6 +43,9 @@ public sealed class CalculatorViewModel : INotifyPropertyChanged
 
     /// <summary>Live segmented display, one entry per enabled unit, largest to smallest.</summary>
     public ObservableCollection<UnitSegmentDisplay> DisplaySegments { get; } = new();
+
+    /// <summary>Completed calculations for this session, newest first. Capped at <see cref="MaxHistoryEntries"/>.</summary>
+    public ObservableCollection<HistoryEntry> History { get; } = new();
 
     public bool IsScalarMode => _entryMode == CalculatorEntryMode.Scalar;
 
@@ -57,6 +67,16 @@ public sealed class CalculatorViewModel : INotifyPropertyChanged
     {
         ClearError();
 
+        // Starting to type a brand new value (no chained operator pending) drops the previous
+        // calculation's expression trail rather than leaving it stranded on screen.
+        bool isFreshEntry = _pendingOperator is null
+            && (_entryMode == CalculatorEntryMode.Scalar ? _scalarDigits.Length == 0 : _buffer.IsEmpty);
+        if (isFreshEntry && _expressionTokens.Count > 0)
+        {
+            _expressionTokens.Clear();
+            ExpressionText = string.Empty;
+        }
+
         if (_entryMode == CalculatorEntryMode.Scalar)
         {
             if (_scalarDigits.Length < 15)
@@ -66,10 +86,27 @@ public sealed class CalculatorViewModel : INotifyPropertyChanged
         }
         else
         {
-            _buffer.AppendDigit(digit);
+            _buffer.AppendDigit(digit, Settings);
         }
 
         _showResultWhenEntryEmpty = false;
+        RefreshDisplay();
+    }
+
+    /// <summary>
+    /// Selects (or deselects, if already selected) a unit segment for direct entry. While a
+    /// segment is selected, digits typed shift within just that segment - see
+    /// <see cref="ClockEntryBuffer"/>. Has no effect in scalar entry mode, since segments aren't
+    /// shown there.
+    /// </summary>
+    public void PressSelectUnit(ClockUnit unit)
+    {
+        if (_entryMode == CalculatorEntryMode.Scalar || _errorMessage != null || !Settings.IsEnabled(unit))
+        {
+            return;
+        }
+
+        _buffer.ToggleSelection(unit);
         RefreshDisplay();
     }
 
@@ -131,6 +168,7 @@ public sealed class CalculatorViewModel : INotifyPropertyChanged
         _lastResult = null;
         _showResultWhenEntryEmpty = false;
         _entryMode = CalculatorEntryMode.Segmented;
+        _expressionTokens.Clear();
         ExpressionText = string.Empty;
         ClearError();
         RefreshDisplay();
@@ -149,6 +187,11 @@ public sealed class CalculatorViewModel : INotifyPropertyChanged
             return;
         }
 
+        // Whether the user typed a new operand since the last operator/equals press, as opposed
+        // to just changing their mind about which operator to apply.
+        bool hasNewInput = _entryMode == CalculatorEntryMode.Scalar ? _scalarDigits.Length > 0 : !_buffer.IsEmpty;
+        bool isFreshChain = _pendingOperator is null;
+
         ClockValue result;
         try
         {
@@ -159,6 +202,30 @@ public sealed class CalculatorViewModel : INotifyPropertyChanged
             EnterDivideByZeroError();
             return;
         }
+
+        if (isFreshChain)
+        {
+            // A fresh chain starts from whatever is currently entered (or the previous result,
+            // per ResolveCurrentResult), discarding any earlier finished calculation's trail.
+            _expressionTokens.Clear();
+            _expressionTokens.Add(FormatClockValue(result));
+            _expressionTokens.Add(OperatorSymbol(op));
+        }
+        else if (hasNewInput)
+        {
+            string operandText = _entryMode == CalculatorEntryMode.Scalar
+                ? FormatScalarDigits(_scalarDigits)
+                : FormatClockValue(CurrentSegmentedEntryValue());
+            _expressionTokens.Add(operandText);
+            _expressionTokens.Add(OperatorSymbol(op));
+        }
+        else
+        {
+            // No new operand was typed - just swap the pending operator in place.
+            _expressionTokens[^1] = OperatorSymbol(op);
+        }
+
+        ExpressionText = string.Join(" ", _expressionTokens);
 
         _pendingOperand = result;
         _pendingOperator = op;
@@ -169,7 +236,6 @@ public sealed class CalculatorViewModel : INotifyPropertyChanged
         _scalarDigits = string.Empty;
         _entryMode = op is '*' or '/' ? CalculatorEntryMode.Scalar : CalculatorEntryMode.Segmented;
 
-        ExpressionText = $"{FormatClockValue(result)} {OperatorSymbol(op)}";
         RefreshDisplay();
     }
 
@@ -180,11 +246,9 @@ public sealed class CalculatorViewModel : INotifyPropertyChanged
             return;
         }
 
-        string operand1Text = FormatClockValue(_pendingOperand!.Value);
         string operand2Text = _entryMode == CalculatorEntryMode.Scalar
             ? FormatScalarDigits(_scalarDigits)
             : FormatClockValue(CurrentSegmentedEntryValue());
-        char op = _pendingOperator.Value;
 
         ClockValue result;
         try
@@ -197,7 +261,16 @@ public sealed class CalculatorViewModel : INotifyPropertyChanged
             return;
         }
 
-        ExpressionText = $"{operand1Text} {OperatorSymbol(op)} {operand2Text} =";
+        _expressionTokens.Add(operand2Text);
+        _expressionTokens.Add("=");
+        _expressionTokens.Add(FormatClockValue(result));
+        ExpressionText = string.Join(" ", _expressionTokens);
+
+        History.Insert(0, new HistoryEntry(ExpressionText, result));
+        while (History.Count > MaxHistoryEntries)
+        {
+            History.RemoveAt(History.Count - 1);
+        }
 
         _pendingOperand = null;
         _pendingOperator = null;
@@ -210,6 +283,26 @@ public sealed class CalculatorViewModel : INotifyPropertyChanged
 
         RefreshDisplay();
     }
+
+    /// <summary>Recalls a past calculation's result as the current value, ready for further operations.</summary>
+    public void RecallHistory(HistoryEntry entry)
+    {
+        ClearError();
+
+        _expressionTokens.Clear();
+        _buffer.Clear();
+        _scalarDigits = string.Empty;
+        _pendingOperand = null;
+        _pendingOperator = null;
+        _lastResult = entry.Result;
+        _showResultWhenEntryEmpty = true;
+        _entryMode = CalculatorEntryMode.Segmented;
+        ExpressionText = entry.Expression;
+
+        RefreshDisplay();
+    }
+
+    public void ClearHistory() => History.Clear();
 
     public void ToggleUnit(ClockUnit unit)
     {
@@ -308,7 +401,7 @@ public sealed class CalculatorViewModel : INotifyPropertyChanged
                 bool isLargest = i == 0;
                 string magnitude = Math.Abs(value).ToString(isLargest ? "0" : "00", CultureInfo.InvariantCulture);
                 string text = isLargest && isNegative ? "-" + magnitude : magnitude;
-                DisplaySegments.Add(new UnitSegmentDisplay(unit, UnitLabel(unit), text));
+                DisplaySegments.Add(new UnitSegmentDisplay(unit, UnitLabel(unit), text, unit == _buffer.SelectedUnit));
             }
         }
 

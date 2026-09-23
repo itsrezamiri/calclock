@@ -13,6 +13,8 @@
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
         <conv:StringToVisibilityConverter x:Key="StringToVisibility" />
+        <conv:BoolToSelectionBrushConverter x:Key="BoolToSelectionBrush" />
+        <conv:CountToVisibilityConverter x:Key="CountToVisibility" />
 
         <Style x:Key="CalcButtonStyle" TargetType="Button">
             <Setter Property="FontSize" Value="20" />
@@ -43,9 +45,42 @@
         </Grid.RowDefinitions>
 
         <!-- Units settings -->
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto">
             <TextBlock Grid.Column="0" Text="CalcClock" Style="{StaticResource SubtitleTextBlockStyle}" VerticalAlignment="Center" />
-            <Button x:Name="UnitsButton" Grid.Column="1">
+            <Button x:Name="HistoryButton" Grid.Column="1" Margin="0,0,8,0">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <SymbolIcon Symbol="Clock" />
+                    <TextBlock Text="History" VerticalAlignment="Center" />
+                </StackPanel>
+                <Button.Flyout>
+                    <Flyout x:Name="HistoryFlyout" Placement="Bottom">
+                        <StackPanel Spacing="8" MinWidth="260" MaxHeight="360">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="History" Style="{StaticResource BaseTextBlockStyle}" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="Clear" Click="ClearHistoryButton_Click" />
+                            </Grid>
+                            <TextBlock
+                                Text="No calculations yet."
+                                Visibility="{Binding History.Count, Converter={StaticResource CountToVisibility}}"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <ListView
+                                x:Name="HistoryListView"
+                                ItemsSource="{Binding History}"
+                                SelectionMode="None"
+                                IsItemClickEnabled="True"
+                                ItemClick="HistoryListView_ItemClick"
+                                MaxHeight="320">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="core:HistoryEntry">
+                                        <TextBlock Text="{x:Bind Expression}" TextWrapping="Wrap" />
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+            <Button x:Name="UnitsButton" Grid.Column="2">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <SymbolIcon Symbol="Setting" />
                     <TextBlock Text="Units" VerticalAlignment="Center" />
@@ -73,7 +108,11 @@
             x:Name="ExpressionTextBlock"
             Text="{Binding ExpressionText}"
             Visibility="{Binding ExpressionText, Converter={StaticResource StringToVisibility}}"
-            HorizontalAlignment="Right"
+            HorizontalAlignment="Stretch"
+            TextAlignment="Right"
+            TextWrapping="WrapWholeWords"
+            TextTrimming="CharacterEllipsis"
+            MaxLines="2"
             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
             FontSize="16" />
 
@@ -101,10 +140,17 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="core:UnitSegmentDisplay">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock Text="{x:Bind Text}" FontSize="34" HorizontalAlignment="Center" />
-                                <TextBlock Text="{x:Bind Label}" FontSize="12" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </StackPanel>
+                            <Border
+                                Background="{x:Bind IsSelected, Converter={StaticResource BoolToSelectionBrush}}"
+                                CornerRadius="4"
+                                Padding="6,2"
+                                Tag="{x:Bind Unit}"
+                                Tapped="UnitSegment_Tapped">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="{x:Bind Text}" FontSize="34" HorizontalAlignment="Center" />
+                                    <TextBlock Text="{x:Bind Label}" FontSize="12" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

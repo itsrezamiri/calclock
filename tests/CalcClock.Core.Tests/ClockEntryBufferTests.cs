@@ -12,7 +12,7 @@ public class ClockEntryBufferTests
 
         foreach (var d in new[] { 3, 0, 4, 5 }) // types "3045"
         {
-            buffer.AppendDigit(d);
+            buffer.AppendDigit(d, settings);
         }
 
         var segments = buffer.GetSegments(settings);
@@ -31,7 +31,7 @@ public class ClockEntryBufferTests
 
         foreach (var d in new[] { 1, 2, 3, 4, 5, 6 }) // types "123456" -> 12h 34m 56s
         {
-            buffer.AppendDigit(d);
+            buffer.AppendDigit(d, settings);
         }
 
         var segments = buffer.GetSegments(settings);
@@ -57,8 +57,8 @@ public class ClockEntryBufferTests
     {
         var settings = new UnitSettings();
         var buffer = new ClockEntryBuffer();
-        buffer.AppendDigit(1);
-        buffer.AppendDigit(2);
+        buffer.AppendDigit(1, settings);
+        buffer.AppendDigit(2, settings);
 
         buffer.Backspace();
         var segments = buffer.GetSegments(settings);
@@ -73,7 +73,7 @@ public class ClockEntryBufferTests
         var buffer = new ClockEntryBuffer();
         foreach (var d in new[] { 1, 0, 0 }) // "100" -> 0h 01m 00s
         {
-            buffer.AppendDigit(d);
+            buffer.AppendDigit(d, settings);
         }
 
         var value = buffer.ToClockValue(settings);
@@ -90,12 +90,72 @@ public class ClockEntryBufferTests
         var buffer = new ClockEntryBuffer();
         foreach (var d in new[] { 9, 9, 9 })
         {
-            buffer.AppendDigit(d);
+            buffer.AppendDigit(d, settings);
         }
 
         var segments = buffer.GetSegments(settings);
 
         Assert.Single(segments);
         Assert.Equal(999L, segments[0].Value);
+    }
+
+    [Fact]
+    public void SelectedUnit_TypedDigitsGoOnlyIntoThatSegment()
+    {
+        var settings = new UnitSettings(); // Hour, Minute, Second
+        var buffer = new ClockEntryBuffer();
+        buffer.AppendDigit(5, settings); // Second = 05 via the default cascading stream
+
+        buffer.ToggleSelection(ClockUnit.Hour);
+        buffer.AppendDigit(3, settings);
+
+        var segments = buffer.GetSegments(settings);
+
+        Assert.Equal(3L, segments[0].Value); // Hour, independently edited
+        Assert.Equal(0L, segments[1].Value); // Minute, untouched
+        Assert.Equal(5L, segments[2].Value); // Second, untouched by the Hour edit
+    }
+
+    [Fact]
+    public void SelectedUnit_NonLargestSegment_ShiftsWithinItsOwnTwoDigitWidth()
+    {
+        var settings = new UnitSettings(); // Hour, Minute, Second
+        var buffer = new ClockEntryBuffer();
+        buffer.ToggleSelection(ClockUnit.Minute);
+
+        foreach (var d in new[] { 1, 2, 3 }) // shifts to "23", the "1" falls off rather than carrying to Hour
+        {
+            buffer.AppendDigit(d, settings);
+        }
+
+        var segments = buffer.GetSegments(settings);
+
+        Assert.Equal(0L, segments[0].Value); // Hour never receives the overflowed "1"
+        Assert.Equal(23L, segments[1].Value); // Minute
+    }
+
+    [Fact]
+    public void SelectedUnit_ToggleTwice_Deselects()
+    {
+        var buffer = new ClockEntryBuffer();
+        buffer.ToggleSelection(ClockUnit.Hour);
+        buffer.ToggleSelection(ClockUnit.Hour);
+
+        Assert.Null(buffer.SelectedUnit);
+    }
+
+    [Fact]
+    public void SelectedUnit_BackspaceRemovesOnlyFromThatSegment()
+    {
+        var settings = new UnitSettings();
+        var buffer = new ClockEntryBuffer();
+        buffer.ToggleSelection(ClockUnit.Minute);
+        buffer.AppendDigit(4, settings);
+        buffer.AppendDigit(2, settings); // Minute = "42"
+
+        buffer.Backspace();
+        var segments = buffer.GetSegments(settings);
+
+        Assert.Equal(4L, segments[1].Value); // Minute
     }
 }

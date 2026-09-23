@@ -1,6 +1,7 @@
 using CalcClock.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 
 namespace CalcClock_App;
 
@@ -44,6 +45,26 @@ public sealed partial class MainPage : Page
     private void ClearEntryButton_Click(object sender, RoutedEventArgs e) => _viewModel.PressClearEntry();
 
     private void BackspaceButton_Click(object sender, RoutedEventArgs e) => _viewModel.PressBackspace();
+
+    private void UnitSegment_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: ClockUnit unit })
+        {
+            _viewModel.PressSelectUnit(unit);
+        }
+    }
+
+    private void HistoryListView_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is HistoryEntry entry)
+        {
+            _viewModel.RecallHistory(entry);
+        }
+
+        HistoryFlyout.Hide();
+    }
+
+    private void ClearHistoryButton_Click(object sender, RoutedEventArgs e) => _viewModel.ClearHistory();
 
     /// <summary>Syncs the toggle switches to current settings each time the flyout opens.</summary>
     private void UnitsFlyout_Opening(object? sender, object e)
