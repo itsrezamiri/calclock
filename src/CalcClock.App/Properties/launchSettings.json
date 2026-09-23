@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "CalcClock.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "CalcClock.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
