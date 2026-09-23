@@ -38,7 +38,31 @@
   <PropertyGroup>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
-    <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
-    <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
+    <!-- Trimming is unproven for this early WinUI 3 tooling (Microsoft.WindowsAppSDK.WinUI.CSharp.Templates
+         is still an alpha package) and its interaction with the workaround below is untested, so leave it off. -->
+    <PublishTrimmed>False</PublishTrimmed>
   </PropertyGroup>
+
+  <!--
+    `dotnet publish` on this project/SDK combination silently drops the compiled-XAML outputs
+    (App.xbf, MainPage.xbf, MainWindow.xbf), this project's own merged resources file
+    (CalcClock.App.pri), and the Assets folder - `dotnet build` includes all of them correctly,
+    but the corresponding ComputeFilesToPublish step does not pick them up. Without them,
+    Microsoft.UI.Xaml.dll cannot load the app's XAML and the published exe crashes on launch
+    with STATUS_STOWED_EXCEPTION (0xc000027b). Until upstream tooling fixes this, copy the
+    missing files from the regular build output (which `publish` produces as a prerequisite)
+    into the publish directory.
+  -->
+  <Target Name="CopyMissingWinUIPublishAssets" AfterTargets="Publish">
+    <ItemGroup>
+      <_MissingPublishFiles Include="$(OutDir)*.xbf" />
+      <_MissingPublishFiles Include="$(OutDir)$(AssemblyName).pri" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_MissingPublishFiles)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="'@(_MissingPublishFiles)' != ''" />
+
+    <ItemGroup>
+      <_MissingPublishAssets Include="$(OutDir)Assets\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_MissingPublishAssets)" DestinationFolder="$(PublishDir)Assets\%(RecursiveDir)" SkipUnchangedFiles="true" Condition="'@(_MissingPublishAssets)' != ''" />
+  </Target>
 </Project>

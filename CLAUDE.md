@@ -24,12 +24,16 @@ dotnet test --filter FullyQualifiedName~ClockValueTests   # run a single test cl
 dotnet test --filter DisplayName~Decompose_NegativeValue  # run a single test by name
 
 dotnet run --project src/CalcClock.App   # run the WinUI app
+
+dotnet publish src/CalcClock.App/CalcClock.App.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64
 ```
 
 The app project builds/runs per-architecture (`win-x64`/`win-x86`/`win-arm64`, inferred from the host by
 default). When building via the `.sln`, MSBuild resolves `Platform=x64` and the app's output lands under
 `src/CalcClock.App/bin/x64/Debug/...`; building the `.csproj` directly (no explicit platform) puts it under
 `src/CalcClock.App/bin/Debug/...`. Both are valid - just don't be surprised by the different path.
+
+`publish/` is gitignored - it's a local build artifact, not something to commit.
 
 ## Architecture
 
@@ -67,6 +71,20 @@ The solution is split so the calculation engine has zero WinUI dependency and is
 
 - **`tests/CalcClock.Core.Tests`** - xUnit tests, exclusively against `CalcClock.Core`. There is no UI test
   project; UI logic is kept thin enough on purpose that it shouldn't need its own tests.
+
+### A publish gotcha worth knowing
+
+`dotnet publish` on this project (`Microsoft.WindowsAppSDK.WinUI.CSharp.Templates` is still an alpha
+package) silently drops the compiled-XAML outputs (`App.xbf`, `MainPage.xbf`, `MainWindow.xbf`), the
+project's own merged resources file (`CalcClock.App.pri`), and the `Assets` folder from the publish
+output - `dotnet build` includes all of them correctly, but publish's `ComputeFilesToPublish` step doesn't
+pick them up. Without them the published exe crashes on launch inside `Microsoft.UI.Xaml.dll` with
+`STATUS_STOWED_EXCEPTION` (0xc000027b) - it is *not* related to trimming, ReadyToRun, or self-contained-ness
+(all were tested independently; only the plain `dotnet build` output worked, and only publish was broken).
+`CalcClock.App.csproj` has a `CopyMissingWinUIPublishAssets` target (`AfterTargets="Publish"`) that copies
+these files from the regular build output into the publish directory to work around it. If a newer version
+of the WindowsAppSDK/WinUI templates fixes this upstream, this target can likely be removed - verify with a
+plain publish (no workaround) and check the published `.exe` actually launches before removing it.
 
 ### A display-formatting gotcha worth knowing
 
